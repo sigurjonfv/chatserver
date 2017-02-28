@@ -1,0 +1,69 @@
+SERVER API:
+    REQUESTS:
+        "WHO": Gives a list containing the username, ip, port and current chatroom of all connected users.
+        "LIST": Gives a list containing the name, description and number of connected users of all chatrooms on the server.
+        "JOIN [chatroom]": Tries to put the user which posted this information to the requested chatroom.
+        "MSG [message]": If the user is in a chatroom [message] is posted to all users in that chatroom.
+        "ROLL [username]": Challenges a user to a roll or accepts a roll challenge if the user is challenged.
+        "SAY [username]\r\n[message]": Sends a private message to [username] with the text in [message].
+        "USER [username]\r\n[password]": Tries to authenticate [username] with [password].
+        "NEWPASS [username]\r\n[old password]\r\n[new password]": Tries to authenticate [username] with [old password]. On success changes the password of [username] to [new password].
+    RESPONSES:
+        "NOTIFY: [message]": The server is notifying the client of some event.
+        "ERROR: [message]": The server is notifying the client of some error.
+        "JOIN: [chatroom]": The server is notifying the client that he has successfully joined a chatroom.
+        "LOGIN: [username]": The server is notifying the client that he has successfully logged in as [username] or the password has been changed.
+        "WELCOME: [greeting]": The server is greeting the client.
+
+CLIENT COMMANDS:
+    "/who": Queries the server for all connected users.
+    "/list": Queries the server for chatrooms.
+    "/join [chatroom]": Notifies the server that you want to join a chatroom.
+    "/roll [username]": Notifies the server that you want to partake in a rolling competition with [username].
+    "/say [username] [message]": Notifies the server that you want to send [message] to [username] privately.
+    "/user [username]": Will display a password entering field and then send the username and password to the server to be authenticated.
+    "/newpass": Will display  two password entering fields (one for old password and one for the new password) and then send the username and passwords to the server to be changed.
+    "/bye": Will exit the client and cleanup all resources.
+    "/quit": Will exit the client and cleanup all resources.
+
+THE PROJECT:
+1. We generated 2048 bit rsa keys for both the client and the server. The client keys are cli_cert.pem and cli_key.pem.
+The server keys are ser_cert.pem and ser_key.pem.
+2. The keys are loaded  with the OpenSSL library and verified. If something fails in the loading of these keys we terminate
+the applications.
+3. We use SSL_accept to do the ssl handshake. All connections are cleaned up on under normal exit conditions.
+4. We keep all our connected users in a simple array. We have a struct for the clients that contains all the necessary
+information on a connection such as if it is authenticated, it's file descriptor, ssl connection and username. We
+decided not to have any nicknames and instead just use the username for a user. If they are unhappy with their username
+they can register as another username.
+5. We keep all our chatrooms in a hash map for efficient lookup and insertions. Each chatroom has a list of users and those
+are updated whenever a user leaves or disconnects. We never write to anything other than the ssl connection so all
+communication is secure.
+6.1. We authenticate a user by having him send the desired username and password in plain text over an encrypted connection.
+We then hash the password with a salt a few times. The user info is stored in a GKeyfile called passwords.ini. If the user
+does not exist then he is registered.
+The passwords are saved hashed and then stored in base64. We never decode the base64 instead we just compare the base64
+encoded strings.
+6.2. We store the passwords in a file in the server directory, the salt is hard-coded into a char array in the server program.
+We don't generate a unique salt for each password but we have a lot of iterations on our hashing so any attacker would either
+need a supercomputer or a lot of time to crack one password. We trust our users to choose a secure password, like 40 random chars.
+They are salted and hashed then encoded in base64. We do not trust the client to hash the password themselves so we do that on
+the server. The password cannot be read by anyone other than the client and the server since the connection is secured.
+However the server could read the password which is not ideal but we trust the server. It would be best if the client hashed
+the password once before sending but then a user connecting from different clients would maybe not be able to login with his
+password depending on exactly how the password was hashed on that specific client.
+7.1. We deliver the message to the specified recipient and only him.
+7.2. We do not log private messages or store them. If we did then someone who had access to the server directory could
+read all messages.
+8.1. We keep track of the last time a user file descriptor sent us some data. Whenever select returns without an error
+we check all users that have no data for timeouts and disconnect the if they have been idle for too long.
+8.2. If you forget your computer open anyone could send messages in your name. We always check connections for timeouts
+after the select call.
+9.1. We implemented dice.
+9.2. If the rolls happened on the client side they could fake their result. Since we do the rolls on the server and just
+send the clients the results so no one can cheat.
+
+WHY USERS CANNOT BE ANONYMOUS:
+We want everyone to have a username on our server. It makes communication simpler and easier. If you are talking to siggi
+one day and the next day you see siggi again then you know for sure that this is the same person. Anyone can register, they
+just have to pick a unique username with /user [username] to get an account.
